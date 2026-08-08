@@ -39,7 +39,7 @@ Plaud 웹훅이 조용히 끊겨서 노션에 아무것도 안 들어오는 상�
 ## 설치
 
 ```bash
-git clone https://github.com/<your-account>/plaud-to-notion.git
+git clone https://github.com/teribuilder/plaud-to-notion.git
 cd plaud-to-notion
 npm install
 npm run setup
