@@ -31,7 +31,7 @@ Plaud 웹훅이 조용히 끊겨서 노션에 아무것도 안 들어오는 상�
 
 ## 요구사항
 
-- macOS (자동 실행 등록 기준. 다른 OS도 수동 스케줄 등록으로 동작합니다)
+- **macOS 또는 Windows** (자동 실행 등록까지 지원. 리눅스는 cron에 직접 등록)
 - Node.js 20 이상 — `node -v` 로 확인, 없으면 [nodejs.org](https://nodejs.org)
 - 구글 크롬 (없으면 셋업이 크로미움을 대신 받습니다)
 - Plaud 계정, 노션 계정
@@ -58,11 +58,33 @@ npm run setup
 
 ## 노트북에서 써도 되나
 
-됩니다. macOS launchd는 **깨어 있는 동안** 주기 실행하고, 잠자는 사이 놓친 회차는 **깨어날 때 한 번** 실행합니다. 폴링 방식이라 몇 회차를 건너뛰어도 다음 실행에서 밀린 것을 전부 따라잡습니다. 노트북을 며칠 안 켰다면 켠 직후 한 번에 들어옵니다.
+됩니다. 스케줄러는 **컴퓨터가 깨어 있는 동안**만 돌고, 절전 중에는 멈췄다가 깨어나면 다시 이어집니다. 폴링 방식이라 몇 회차를 건너뛰어도 다음 실행에서 밀린 것을 전부 따라잡습니다. 노트북을 며칠 안 켰다면 켠 직후 한 번에 들어옵니다.
+
+- macOS: launchd에 등록되고, 잠자는 사이 놓친 회차는 깨어날 때 한 번 실행됩니다.
+- Windows: 작업 스케줄러에 N분 간격으로 등록됩니다. **콘솔 창은 뜨지 않습니다**(wscript로 숨김 실행). 로그인 상태에서만 돕니다.
+
+## Windows에서 쓸 때
+
+설치 과정은 동일합니다. 다만 이렇게 하세요.
+
+1. [nodejs.org](https://nodejs.org) 에서 LTS 설치 (설치 중 "Add to PATH" 체크)
+2. **PowerShell**을 열고 (cmd 말고) 위 설치 명령 4줄을 그대로 실행
+3. 한글이 깨져 보이면 `chcp 65001` 한 번 실행 후 다시 시도
+
+터미널에 `git` 이 없다면 GitHub 페이지에서 **Code → Download ZIP** 으로 받아 압축을 풀고, 그 폴더에서 `npm install` 부터 하셔도 됩니다.
+
+자동 실행 확인·해제:
+
+```powershell
+schtasks /Query /TN PlaudToNotion     # 등록 확인
+schtasks /Run   /TN PlaudToNotion     # 즉시 1회 실행
+npm run unschedule                     # 해제
+```
 
 ## 명령어
 
 ```bash
+npm run doctor                 # 안 될 때 어디가 막혔는지 진단
 npm start                      # 지금 한 번 확인
 npm run dry                    # 노션에 쓰지 않고 대상만 출력
 node poller.mjs --limit 200    # 넓게 훑기(백필)
@@ -95,6 +117,8 @@ npm run unschedule             # 자동 실행 해제
 
 ## 문제 해결
 
+**뭐가 문제인지 모르겠을 때** → `npm run doctor` 를 먼저 돌리세요. Node 버전·크롬·노션 연결·Plaud 세션·자동 실행 등록·마지막 실행 시각을 한 번에 확인해 줍니다.
+
 **`🔴 Plaud 세션이 만료되었습니다`**
 → `npm run login` 으로 다시 로그인하면 됩니다. 슬랙 웹훅을 넣어뒀다면 만료 시 알림이 갑니다.
 
@@ -119,7 +143,7 @@ npm run unschedule             # 자동 실행 해제
 
 Automatically pushes Plaud notes (AI summary + full transcript) into a Notion database, on your own machine — no Make/Zapier, no monthly fee. It **polls** instead of waiting for webhooks, so a missed webhook never means silent data loss, and backfilling is one flag.
 
-Auth works by driving a Chrome profile you log into once; no token copy-pasting, and the session refreshes itself. Requires Node 20+, Chrome, macOS for one-command scheduling.
+Auth works by driving a Chrome profile you log into once; no token copy-pasting, and the session refreshes itself. Requires Node 20+ and Chrome. One-command scheduling on macOS (launchd) and Windows (Task Scheduler); Linux users can add the poller to cron.
 
 ```bash
 npm install && npm run setup

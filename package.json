@@ -10,10 +10,13 @@
     "start": "node poller.mjs",
     "dry": "node poller.mjs --dry-run",
     "schedule": "node schedule.mjs install",
-    "unschedule": "node schedule.mjs uninstall"
+    "unschedule": "node schedule.mjs uninstall",
+    "doctor": "node doctor.mjs"
   },
   "dependencies": {
     "playwright-core": "^1.49.0"
   },
-  "engines": { "node": ">=20" }
+  "engines": {
+    "node": ">=20"
+  }
 }

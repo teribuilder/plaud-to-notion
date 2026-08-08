@@ -1,6 +1,8 @@
 #!/usr/bin/env node
-// macOS launchd 등록/해제. 노트북이 깨어 있는 동안만 돌고,
-// 잠자는 사이 놓친 회차는 깨어날 때 한 번 실행된다.
+// 자동 실행 등록/해제 — macOS(launchd) / Windows(작업 스케줄러)
+//
+//   node schedule.mjs install
+//   node schedule.mjs uninstall
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -9,31 +11,27 @@ import { fileURLToPath } from 'node:url';
 import { readConfig, HOME } from './lib/config.mjs';
 
 const LABEL = 'com.plaud-to-notion.poller';
+const TASK_NAME = 'PlaudToNotion';
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
-const PLIST = path.join(os.homedir(), 'Library', 'LaunchAgents', `${LABEL}.plist`);
+const POLLER = path.join(ROOT, 'poller.mjs');
 const action = process.argv[2] || 'install';
-
-if (process.platform !== 'darwin') {
-  console.error('현재 자동 등록은 macOS만 지원합니다.');
-  console.error(`다른 OS에서는 스케줄러에 다음 명령을 등록하세요:\n  ${process.execPath} ${path.join(ROOT, 'poller.mjs')}`);
-  process.exit(1);
-}
-
-const uid = process.getuid();
-const domain = `gui/${uid}`;
-
-function uninstall() {
-  try { execFileSync('launchctl', ['bootout', `${domain}/${LABEL}`], { stdio: 'ignore' }); } catch {}
-  if (fs.existsSync(PLIST)) fs.unlinkSync(PLIST);
-  console.log('자동 실행을 해제했습니다.');
-}
-
-if (action === 'uninstall') { uninstall(); process.exit(0); }
-
 const cfg = readConfig();
-const intervalSec = Math.max(60, (cfg?.intervalMinutes ?? 10) * 60);
+const intervalMin = Math.max(1, cfg?.intervalMinutes ?? 10);
 
-const plist = `<?xml version="1.0" encoding="UTF-8"?>
+// ---------- macOS ----------
+function macos() {
+  const plistPath = path.join(os.homedir(), 'Library', 'LaunchAgents', `${LABEL}.plist`);
+  const domain = `gui/${process.getuid()}`;
+  const boot = (args) => { try { execFileSync('launchctl', args, { stdio: 'ignore' }); } catch {} };
+
+  if (action === 'uninstall') {
+    boot(['bootout', `${domain}/${LABEL}`]);
+    if (fs.existsSync(plistPath)) fs.unlinkSync(plistPath);
+    console.log('자동 실행을 해제했습니다.');
+    return;
+  }
+
+  const plist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -41,22 +39,59 @@ const plist = `<?xml version="1.0" encoding="UTF-8"?>
   <key>ProgramArguments</key>
   <array>
     <string>${process.execPath}</string>
-    <string>${path.join(ROOT, 'poller.mjs')}</string>
+    <string>${POLLER}</string>
   </array>
   <key>WorkingDirectory</key><string>${ROOT}</string>
-  <key>StartInterval</key><integer>${intervalSec}</integer>
+  <key>StartInterval</key><integer>${intervalMin * 60}</integer>
   <key>RunAtLoad</key><false/>
   <key>StandardOutPath</key><string>${path.join(HOME, 'launchd.out.log')}</string>
   <key>StandardErrorPath</key><string>${path.join(HOME, 'launchd.err.log')}</string>
 </dict>
 </plist>
 `;
+  fs.mkdirSync(path.dirname(plistPath), { recursive: true });
+  boot(['bootout', `${domain}/${LABEL}`]);
+  fs.writeFileSync(plistPath, plist);
+  execFileSync('launchctl', ['bootstrap', domain, plistPath]);
+  console.log(`✅ 자동 실행 등록 완료 — ${intervalMin}분마다 확인합니다.`);
+  console.log(`   해제: npm run unschedule`);
+  console.log(`   즉시 1회: launchctl kickstart ${domain}/${LABEL}`);
+}
 
-fs.mkdirSync(path.dirname(PLIST), { recursive: true });
-try { execFileSync('launchctl', ['bootout', `${domain}/${LABEL}`], { stdio: 'ignore' }); } catch {}
-fs.writeFileSync(PLIST, plist);
-execFileSync('launchctl', ['bootstrap', domain, PLIST]);
+// ---------- Windows ----------
+function windows() {
+  const schtasks = (args) => execFileSync('schtasks', args, { stdio: 'pipe', windowsHide: true });
 
-console.log(`✅ 자동 실행 등록 완료 — ${intervalSec / 60}분마다 확인합니다.`);
-console.log(`   해제: npm run unschedule`);
-console.log(`   즉시 1회 실행: launchctl kickstart ${domain}/${LABEL}`);
+  if (action === 'uninstall') {
+    try { schtasks(['/Delete', '/TN', TASK_NAME, '/F']); } catch {}
+    console.log('자동 실행을 해제했습니다.');
+    return;
+  }
+
+  // 10분마다 검은 콘솔 창이 깜빡이면 아무도 안 쓴다 — wscript로 창 없이 띄운다
+  const vbs = path.join(HOME, 'run-hidden.vbs');
+  fs.writeFileSync(vbs,
+    'Set s = CreateObject("WScript.Shell")\r\n' +
+    `s.Run """${process.execPath}"" ""${POLLER}""", 0, False\r\n`,
+    'utf8');
+
+  try { schtasks(['/Delete', '/TN', TASK_NAME, '/F']); } catch {}
+  schtasks([
+    '/Create', '/TN', TASK_NAME,
+    '/TR', `wscript.exe "${vbs}"`,
+    '/SC', 'MINUTE', '/MO', String(intervalMin),
+    '/F',
+  ]);
+  console.log(`✅ 자동 실행 등록 완료 — ${intervalMin}분마다 확인합니다.`);
+  console.log(`   해제: npm run unschedule`);
+  console.log(`   즉시 1회: schtasks /Run /TN ${TASK_NAME}`);
+  console.log('   ※ 로그인 상태에서만 돕니다. 절전 중에는 멈췄다가 깨어나면 다시 이어집니다.');
+}
+
+if (process.platform === 'darwin') macos();
+else if (process.platform === 'win32') windows();
+else {
+  console.error('자동 등록은 macOS·Windows만 지원합니다.');
+  console.error(`리눅스는 cron에 다음을 등록하세요:\n  */${intervalMin} * * * * ${process.execPath} ${POLLER}`);
+  process.exit(1);
+}

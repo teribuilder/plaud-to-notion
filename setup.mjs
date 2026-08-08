@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
+import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { readConfig, writeConfig, CONFIG_FILE, HOME } from './lib/config.mjs';
 import { notion, searchPages, searchDatabases, createDatabase, resolveSchema } from './lib/notion.mjs';
@@ -20,14 +21,18 @@ line();
 
 // 0) 크롬 확인 — 설치된 크롬을 쓰면 브라우저를 따로 받지 않아도 된다
 let browserChannel = 'chrome';
-const chromePaths = [
-  '/Applications/Google Chrome.app',
-  'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-];
+const chromePaths = process.platform === 'win32'
+  ? [
+      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+      path.join(process.env.LOCALAPPDATA || '', 'Google\\Chrome\\Application\\chrome.exe'),
+    ]
+  : ['/Applications/Google Chrome.app'];
 if (!chromePaths.some((p) => fs.existsSync(p))) {
   console.log('⚠️  구글 크롬이 안 보입니다. 크로미움을 내려받아 사용합니다(약 150MB).');
   if (await yes('   지금 내려받을까요?')) {
-    execFileSync('npx', ['playwright', 'install', 'chromium'], { stdio: 'inherit' });
+    // 윈도우에서 npx는 npx.cmd라 shell 경유가 필요하다
+    execFileSync('npx', ['playwright', 'install', 'chromium'], { stdio: 'inherit', shell: process.platform === 'win32' });
     browserChannel = null;
   } else {
     console.log('   크롬 설치 후 다시 실행해 주세요.');
@@ -128,7 +133,7 @@ execFileSync(process.execPath, ['poller.mjs', '--limit', String(limit)], { stdio
 
 // 6) 자동 실행
 line();
-if (process.platform === 'darwin' && await yes('6) 자동 실행을 등록할까요?')) {
+if (['darwin', 'win32'].includes(process.platform) && await yes('6) 자동 실행을 등록할까요?')) {
   execFileSync(process.execPath, ['schedule.mjs', 'install'], { stdio: 'inherit' });
 }
 
