@@ -1,0 +1,19 @@
+{
+  "name": "plaud-to-notion",
+  "version": "1.0.0",
+  "description": "Plaud 노트(전사본 + AI 요약)를 요약 완료 시점에 노션 DB로 자동 적재. Make/Zapier 없이 내 컴퓨터에서 돈다.",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "setup": "node setup.mjs",
+    "login": "node login.mjs",
+    "start": "node poller.mjs",
+    "dry": "node poller.mjs --dry-run",
+    "schedule": "node schedule.mjs install",
+    "unschedule": "node schedule.mjs uninstall"
+  },
+  "dependencies": {
+    "playwright-core": "^1.49.0"
+  },
+  "engines": { "node": ">=20" }
+}
